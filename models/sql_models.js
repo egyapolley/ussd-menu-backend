@@ -11,7 +11,7 @@ const Distributor = sequelize.define("distributor", {
         autoIncrement:true
     },
 
-    distributorId: {
+    acctId: {
         type:Sequelize.STRING,
         allowNull: false,
     },
@@ -23,10 +23,6 @@ const Distributor = sequelize.define("distributor", {
     contactId:{
         type:Sequelize.STRING,
         unique:true,
-        allowNull: false,
-    },
-    emailId:{
-        type:Sequelize.STRING,
         allowNull: false,
     },
     status:{
@@ -41,20 +37,10 @@ const Distributor = sequelize.define("distributor", {
         type:Sequelize.STRING,
         allowNull:false,
     },
-    margin:{
-        type:Sequelize.FLOAT,
-        allowNull: false,
-    },
     territoryCode: {
         type:Sequelize.STRING,
         allowNull:false
     },
-    cashValue:{
-        type:Sequelize.FLOAT,
-        allowNull:false,
-        defaultValue:0
-
-    }
 
 });
  const Retailor = sequelize.define("retailor", {
@@ -72,7 +58,7 @@ const Distributor = sequelize.define("distributor", {
          type:Sequelize.STRING,
          allowNull: false,
      },
-     retailorId:{
+     acctId:{
          type:Sequelize.STRING,
          allowNull: false,
      },
@@ -97,15 +83,6 @@ const Distributor = sequelize.define("distributor", {
      initialActivationDate:{
          type:Sequelize.STRING,
      },
-     margin:{
-         type:Sequelize.FLOAT,
-         allowNull: false,
-     },
-     cashValue:{
-         type:Sequelize.FLOAT,
-         allowNull:false,
-         defaultValue:0
-     }
 
  });
 

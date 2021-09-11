@@ -21,7 +21,6 @@ mongoose.connect("mongodb://localhost/ussd_Distributor", {
     Distributor.hasMany(Retailor)
 
     sequelize.sync({
-        force:false,
 
     })
         .then(() => {

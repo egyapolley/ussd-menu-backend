@@ -17,10 +17,10 @@ module.exports = {
                 .min(4),
             contactId: Joi.string()
                 .trim()
-                .regex(/^0[1234567890]{9}$/)
-                .length(9)
+                .regex(/^233[1234567890]{9}$/)
+                .length(12)
                 .required()
-                .messages({"string.pattern.base": "Invalid Contact Number length. Contact should be 10 digits starting with 0"}),
+                .messages({"string.pattern.base": "Invalid Contact Number length. Contact should be 12 digits starting with 233"}),
             areaZone: Joi.string()
                 .trim()
                 .lowercase()
@@ -28,13 +28,6 @@ module.exports = {
                 .max(255)
                 .label('TERRITORY/AREA')
                 .min(4),
-            margin: Joi.number()
-                .max(50)
-                .required(),
-            emailId: Joi.string()
-                .email()
-                .label('EMAIL')
-                .required(),
             channel: Joi.string()
                 .trim()
                 .alphanum()
@@ -68,18 +61,21 @@ module.exports = {
                 .label('LAST NAME')
                 .max(255)
                 .min(4),
+            pin: Joi.string()
+                .length(6)
+                .regex(/^[0123456789]{6}$/)
+                .required()
+                .label('PIN')
+                .messages({"string.pattern.base": "Invalid PIN length. PIN should be 6 digits"}),
             distributorId: Joi.number()
                 .required()
                 .label('DISTRIBUTOR'),
             contactId: Joi.string()
                 .trim()
-                .regex(/^0[1234567890]{9}$/)
+                .regex(/^233[1234567890]{9}$/)
                 .required()
-                .length(9)
-                .messages({"string.pattern.base": "Invalid Contact Number length. Contact should be 10 digits starting with 0"}),
-            margin: Joi.number()
-                .max(50)
-                .required(),
+                .length(12)
+                .messages({"string.pattern.base": "Invalid Contact Number length. Contact should be 12 digits starting with 0"}),
             channel: Joi.string()
                 .trim()
                 .alphanum()
@@ -158,6 +154,37 @@ module.exports = {
                 .max(1000)
                 .min(0.01)
                 .label('AMOUNT'),
+            surfContact: Joi.string()
+                .required(),
+            msisdn: Joi.string()
+                .trim()
+                .regex(/^23325[1234567890]{7}$/)
+                .required()
+                .length(12)
+                .messages({"string.pattern.base": "Invalid Surfline Number. Surfline number should start with 025"}),
+            channel: Joi.string()
+                .trim()
+                .alphanum()
+                .required()
+                .min(4)
+        });
+
+        return schema.validate(body)
+
+    },
+    dataTopSub:(body) =>{
+        const schema = Joi.object({
+            pin: Joi.string()
+                .length(6)
+                .regex(/^[0123456789]{6}$/)
+                .required()
+                .label('PIN')
+                .messages({"string.pattern.base": "Invalid PIN length. PIN should be 6 digits"}),
+            acctId: Joi.number()
+                .required()
+                .label('PHONE NUMBER'),
+            bundleId: Joi.string()
+                .required(),
             msisdn: Joi.string()
                 .trim()
                 .regex(/^23325[1234567890]{7}$/)

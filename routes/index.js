@@ -7,6 +7,7 @@ const validator = require("../utils/validators");
 const passport = require("passport");
 const BasicStrategy = require("passport-http").BasicStrategy;
 const validate = require("../utils/validators")
+const uuid = require("uuid");
 
 
 const moment = require("moment");
@@ -39,7 +40,8 @@ const options = {
     stopNodes: ["parse-me-as-string"]
 };
 
-const sessions = {}
+
+const PI_ENDPOINT = "http://172.25.38.42:3003";
 
 passport.use(new BasicStrategy(
     function (username, password, done) {
@@ -74,7 +76,7 @@ router.post('/create_dist', passport.authenticate('basic', {session: false}), as
         })
     }
 
-    let {businessName, contactId, areaZone, margin, channel, emailId} = req.body
+    let {businessName, contactId, areaZone, channel} = req.body
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
         return res.json({
@@ -82,30 +84,43 @@ router.post('/create_dist', passport.authenticate('basic', {session: false}), as
             reason: `Invalid Request channel ${channel}`
         })
     }
-    contactId = `233${contactId.substring(1)}`
+
+    let acctId = `100${contactId.substring(3)}`
 
     const isExistingMessage = await checkExisting(contactId)
     if (isExistingMessage) return res.json({status: 1, reason: isExistingMessage})
+    const txn = await sequelize.transaction()
     try {
-        let acctId = `DIST-${contactId}`
         let pin = generatePIN()
         await Distributor.create({
-            distributorId: acctId,
+            acctId,
             businessName,
             territoryCode: areaZone,
-            margin,
             contactId,
             pin,
-            emailId
-        })
+        }, {transaction: txn})
+        await createINAccount(acctId, "E-Distributors")
+        await txn.commit();
         res.json({
             status: "0",
             reason: "success"
         })
+        let smsContent = `Your PIN: ${pin}`
+        try {
+            await pushSMS(contactId, smsContent)
+        } catch (ex) {
+            console.log("SMS Error", ex)
+        }
+
     } catch (ex) {
-        let {type, path, value} = ex.errors[0]
+        console.log(ex)
+        await txn.rollback()
         let errorMessage = "Distributor Creation Failed.System Failure.Please contact SysAdmin";
-        if (type === 'unique violation') errorMessage = `${path}, ${value} already exist.`
+        if (ex.errors) {
+            let {type, path, value} = ex.errors[0]
+            if (type === 'unique violation') errorMessage = `${path}, ${value} already exist.`
+        }
+
         res.json({
             status: 1,
             reason: errorMessage
@@ -125,7 +140,7 @@ router.post('/create_retail', passport.authenticate('basic', {session: false}), 
         })
     }
 
-    let {firstName, lastName, distributorId, businessName, contactId, margin, channel} = req.body
+    let {firstName, lastName, distributorId, businessName, contactId, channel,pin:distpin} = req.body
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
         return res.json({
@@ -134,39 +149,52 @@ router.post('/create_retail', passport.authenticate('basic', {session: false}), 
         })
     }
 
+
+    let acctId = `101${contactId.substring(1)}`
     contactId = `233${contactId.substring(1)}`
-    distributorId = `233${distributorId.substring(1)}`
+
 
     const isExistingMessage = await checkExisting(contactId)
     if (isExistingMessage) return res.json({status: 1, reason: isExistingMessage})
 
-    const dist = await Distributor.findOne({where: {contactId: distributorId}})
-    if (!dist) return res.json({status: 1, reason: "DISTRIBUTOR number does not exist."})
-    if (dist) {
-        const distStatus = dist.status
-        if (distStatus !== 'ACTIVE') return res.json({status: 1, reason: "DISTRIBUTOR number is not ACTIVE"})
-    }
+    const txn = await sequelize.transaction()
     try {
-        let retailorId = `RETAIL-${contactId}`
+
         let pin = generatePIN()
+        const dist = await Distributor.findOne({contactId: distributorId})
+        if (!dist) return res.json({status: 1, reason: "Your phone contact is not assigned a distributor."})
+        if (dist.pin !==distpin)return res.json({status: 1, reason: 'Incorrect PIN provided. Please check and try Again'})
+
         await dist.createRetailor({
             contactId,
             firstName,
             lastName,
             businessName,
-            retailorId,
+            acctId,
             pin,
-            margin
-        })
+        }, {transaction: txn})
+        await createINAccount(acctId, "E-Retailors")
+        await txn.commit()
         res.json({
             status: "0",
             reason: "success"
         })
+
+        let smsContent = `Your PIN: ${pin}`
+        try {
+            await pushSMS(contactId, smsContent)
+        } catch (ex) {
+            console.log("SMS Error", ex)
+        }
+
     } catch (ex) {
         console.log(ex)
-        let {type, path, value} = ex.errors[0]
-        let errorMessage = "Distributor Creation Failed.System Failure.Please contact SysAdmin";
-        if (type === 'unique violation') errorMessage = `${path}, ${value} already exist.`
+        await txn.rollback()
+        let errorMessage = "Retailor Creation Failed.System Failure.Please contact SysAdmin";
+        if (ex.errors) {
+            let {type, path, value} = ex.errors[0]
+            if (type === 'unique violation') errorMessage = `${path}, ${value} already exist.`
+        }
         res.json({
             status: 1,
             reason: errorMessage
@@ -187,7 +215,7 @@ router.post('/activate_dist', passport.authenticate('basic', {session: false}), 
         })
     }
 
-    let {oldPIN, newPIN, acctId, channel} = req.body
+    let {oldPIN, newPIN, acctId: contactId, channel} = req.body
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
         return res.json({
@@ -195,7 +223,7 @@ router.post('/activate_dist', passport.authenticate('basic', {session: false}), 
             reason: `Invalid Request channel ${channel}`
         })
     }
-    let contactId = `233${acctId.substring(1)}`
+
 
     const dist = await Distributor.findOne({where: {contactId}})
     if (!dist) return res.json({status: 1, reason: "DISTRIBUTOR number does not exist."})
@@ -204,6 +232,7 @@ router.post('/activate_dist', passport.authenticate('basic', {session: false}), 
             status: 1,
             reason: 'Incorrect PIN provided. Please check and try Again'
         })
+
         dist.pin = newPIN
         dist.status = 'ACTIVE'
         try {
@@ -229,7 +258,7 @@ router.post('/activate_retail', passport.authenticate('basic', {session: false})
         })
     }
 
-    let {oldPIN, newPIN, acctId, channel} = req.body
+    let {oldPIN, newPIN, acctId: contactId, channel} = req.body
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
         return res.json({
@@ -237,7 +266,7 @@ router.post('/activate_retail', passport.authenticate('basic', {session: false})
             reason: `Invalid Request channel ${channel}`
         })
     }
-    let contactId = `233${acctId.substring(1)}`
+
 
     const ret = await Retailor.findOne({where: {contactId}})
     if (!ret) return res.json({status: 1, reason: "Retailor number does not exist."})
@@ -274,7 +303,7 @@ router.get("/balance_dist", passport.authenticate('basic', {session: false}), as
         })
     }
 
-    let {acctId, pin, channel} = req.query
+    let {acctId: contactId, pin, channel} = req.query
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
         return res.json({
@@ -282,21 +311,19 @@ router.get("/balance_dist", passport.authenticate('basic', {session: false}), as
             reason: `Invalid Request channel ${channel}`
         })
     }
-    let contactId = `233${acctId.substring(1)}`
+
+
     try {
         const dist = await Distributor.findOne({where: {contactId}})
         if (!dist) return res.json({status: 1, reason: "DISTRIBUTOR number does not exist."})
-        if (dist) {
-            if (dist.pin !== pin) res.json({status: 1, reason: 'Incorrect PIN provided. Please check and try again'})
-            let cashValue = dist.cashValue;
-            cashValue = parseFloat(cashValue / 100).toFixed(2)
-            res.json({
-                status: 0,
-                reason: "success",
-                balance: cashValue
-            })
+        if (dist.pin !== pin) return res.json({status: 1, reason: "Incorrect PIN provided. Please check and try Again"})
+        const balance = await getINBalance(dist.acctId)
+        res.json({
+            status: 0,
+            reason: "success",
+            balance: (parseFloat((parseFloat(balance) / 100).toFixed(2))).toLocaleString()
+        })
 
-        }
     } catch (ex) {
         console.log(ex)
         res.json({
@@ -318,7 +345,7 @@ router.get("/balance_retail", passport.authenticate('basic', {session: false}), 
         })
     }
 
-    let {acctId, pin, channel} = req.query
+    let {acctId: contactId, pin, channel} = req.query
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
         return res.json({
@@ -326,21 +353,20 @@ router.get("/balance_retail", passport.authenticate('basic', {session: false}), 
             reason: `Invalid Request channel ${channel}`
         })
     }
-    let contactId = `233${acctId.substring(1)}`
     try {
         const retail = await Retailor.findOne({where: {contactId}})
         if (!retail) return res.json({status: 1, reason: "RETAILOR number does not exist."})
-        if (retail) {
-            if (retail.pin !== pin) res.json({status: 1, reason: 'Incorrect PIN provided. Please check and try again'})
-            let cashValue = retail.cashValue;
-            cashValue = parseFloat(cashValue / 100).toFixed(2)
-            res.json({
-                status: 0,
-                reason: "success",
-                balance: cashValue
-            })
+        if (retail.pin !== pin) return res.json({
+            status: 1,
+            reason: "Incorrect PIN provided. Please check and try Again"
+        })
+        const balance = await getINBalance(retail.acctId)
+        res.json({
+            status: 0,
+            reason: "success",
+            balance: (parseFloat((parseFloat(balance) / 100).toFixed(2))).toLocaleString()
+        })
 
-        }
     } catch (ex) {
         console.log(ex)
         res.json({
@@ -363,7 +389,8 @@ router.post("/cash_top_sub", passport.authenticate('basic', {session: false}), a
         })
     }
 
-    let {acctId, pin, channel, msisdn, amount} = req.body
+    let {acctId: contactId, pin, channel, msisdn, amount, surfContact} = req.body
+    const realAmount = amount
     amount *= 100;
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
@@ -372,65 +399,37 @@ router.post("/cash_top_sub", passport.authenticate('basic', {session: false}), a
             reason: `Invalid Request channel ${channel}`
         })
     }
-    let contactId = `233${acctId.substring(1)}`
     try {
         const retail = await Retailor.findOne({where: {contactId}})
         if (!retail) return res.json({status: 1, reason: "RETAILOR number does not exist."})
-        if (retail) {
-            if (pin !== retail.pin) return res.json({
-                status: 1,
-                reason: " Incorrect PIN provided. Please check and try again"
-            })
-            if (amount > retail.cashValue) return res.json({
-                status: 1,
-                reason: `Insufficient FUNDS in accounts. Your balance is GHC${parseFloat(retail.cashValue / 100).toFixed(2)}`
-            })
+        if (retail.pin !== pin) return res.json({
+            status: 1,
+            reason: 'Incorrect PIN provided. Please check and try Again'
+        })
 
 
-            let transaction;
+        const txn_id = uuid.v4();
+        await debitCash(retail.acctId, amount, txn_id)
+        await creditCash(msisdn, txn_id, amount)
+        res.json({status: 0, reason: "success"})
+        if (surfContact) {
             try {
-
-                transaction = await sequelize.transaction({isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED})
-                let retailor = await Retailor.findOne({where: {contactId}}, {
-                    transaction
-                })
-                if (amount > retailor.cashValue) {
-                    return res.json({
-                        status: 1,
-                        reason: `Insufficient FUNDS in accounts. Your balance is GHC${parseFloat(retailor.cashValue / 100).toFixed(2)}`
-                    })
-                }
-
-                if (sessions[contactId]) return res.json({status: 1, reason: "System Busy. Please try again later"})
-                else {
-                    sessions[contactId] = true
-                    retailor.cashValue -= amount;
-                    await retailor.save({transaction})
-
-                    const result = await creditCashIN(msisdn, "12345", acctId, amount, channel)
-                    await transaction.commit();
-                    delete sessions[contactId]
-                    res.json({status: 0, reason: 'success'})
-                }
-
-
+                let smsContent = `GHC${realAmount} credited on your Surfline number ${msisdn}. Dial *718*77# to buy bundle. Thank you`
+                let smsContent1 = `GHC${realAmount} successfully transferred to ${msisdn}`
+                await pushSMS(surfContact, smsContent)
+                //await pushSMS(contactId, smsContent1)
             } catch (ex) {
-                delete sessions[acctId]
-                console.log(ex)
-                await transaction.rollback()
-                res.json({status: 1, reason: 'System failure. Please try again'})
-
-            } finally {
-                delete sessions[acctId]
+                console.log("SMS Error", ex)
             }
 
-
         }
+
+
     } catch (ex) {
         console.log(ex)
         res.json({
             status: 1,
-            reason: "System Error. Please contact sysAdmin"
+            reason: "Insufficient cash Credit in your account"
         })
 
     }
@@ -448,6 +447,7 @@ router.post("/cash_top_retail", passport.authenticate('basic', {session: false})
     }
 
     let {acctId, pin, channel, retailorId, amount} = req.body
+    const realAmount =amount
     amount *= 100;
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
@@ -456,53 +456,28 @@ router.post("/cash_top_retail", passport.authenticate('basic', {session: false})
             reason: `Invalid Request channel ${channel}`
         })
     }
-    let contactId = `233${acctId.substring(1)}`
-    retailorId = `233${acctId.substring(1)}`
 
     try {
-
-        const dist = await Distributor.findOne({where: {contactId}})
-        if (!dist) return res.json({status: 1, reason: "DISTRIBUTOR number does not exist."})
-        if (dist.pin !== pin) return res.json({status: 1, reason: "Incorrect PIN provided. Please check and try again"})
-        if (dist.status !== 'ACTIVE') return res.json({
+        const dist = await Distributor.findOne({where: {contactId: acctId}})
+        const retail = await Retailor.findOne({where: {contactId: retailorId}})
+        if (!dist) return res.json({status: 1, reason: "RETAILOR number does not exist."})
+        if (dist.pin !== pin) return res.json({
             status: 1,
-            reason: "Distributor account is not ACTIVE. Please make sure you activate account"
+            reason: 'Incorrect PIN provided. Please check and try Again'
         })
-        let transaction;
+
+
+        const txn_id = uuid.v4();
+        await debitCash(dist.acctId.toString(), amount, txn_id)
+        await creditCash(retail.acctId.toString(), txn_id, amount)
+        res.json({status: 0, reason: "success"})
+
         try {
-
-            transaction = await sequelize.transaction({isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED})
-            let distributor = await Distributor.findOne({where: {contactId}}, {transaction})
-            if (amount > distributor.cashValue) {
-                return res.json({
-                    status: 1,
-                    reason: `Insufficient FUNDS in accounts. Your balance is GHC${parseFloat(distributor.cashValue / 100).toFixed(2)}`
-                })
-            }
-
-
-
-            if (sessions[contactId]) return res.json({status: 1, reason: "System Busy. Please try again"})
-            else {
-                sessions[acctId] = true
-                //distributor.cashValue -= amount;
-                console.log(JSON.stringify(Object.getOwnPropertyNames(Object.getPrototypeOf(distributor))))
-
-                //await distributor.save({transaction})
-                //await transaction.commit();
-                delete sessions[contactId]
-                res.json({status: 0, reason: 'success'})
-            }
-
+            let smsContent = `${dist.businessName} has transfered GHC ${realAmount} to your cash wallet number ${retailorId}. Thank you`
+            await pushSMS(retailorId, smsContent)
 
         } catch (ex) {
-            delete sessions[acctId]
-            console.log(ex)
-            await transaction.rollback()
-            res.json({status: 1, reason: 'System failure. Please try again'})
-
-        } finally {
-            delete sessions[acctId]
+            console.log("SMS Error", ex)
         }
 
 
@@ -510,13 +485,162 @@ router.post("/cash_top_retail", passport.authenticate('basic', {session: false})
         console.log(ex)
         res.json({
             status: 1,
-            reason: "System Error. Please contact sysAdmin"
+            reason: "Insufficient cash Credit in your account"
         })
 
     }
 
 
 })
+
+
+router.post("/data_top_retail", passport.authenticate('basic', {session: false}), async (req, res) => {
+
+    const {error} = validate.dataTopSub(req.body)
+    if (error) {
+        return res.json({
+            status: 2,
+            reason: error.message
+        })
+    }
+
+    let {acctId: contactId, pin, channel, msisdn, bundleId} = req.body
+
+
+    if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
+        return res.json({
+            status: 2,
+            reason: `Invalid Request channel ${channel}`
+        })
+    }
+
+    const retail = await Retailor.findOne({where: {contactId}})
+    if (!retail) return res.json({status: 1, reason: "RETAILOR number does not exist."})
+    if (retail.pin !== pin) return res.json({
+        status: 1,
+        reason: 'Incorrect PIN provided. Please check and try Again'
+    })
+
+
+    const txn_id = uuid.v4();
+
+    const url = "http://172.25.39.16:2222";
+    const sampleHeaders = {
+        'User-Agent': 'NodeApp',
+        'Content-Type': 'text/xml;charset=UTF-8',
+        'SOAPAction': 'http://SCLINSMSVM01P/wsdls/Surfline/VoucherRecharge_USSD/VoucherRecharge_USSD',
+        'Authorization': 'Basic YWlhb3NkMDE6YWlhb3NkMDE='
+    };
+
+    let xmlRequest = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:dat="http://SCLINSMSVM01P/wsdls/Surfline/DATARechargeUSSDMobileMoney.wsdl">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <dat:DATARechargeUSSDMoMoRequest>
+         <CC_Calling_Party_Id>${retail.acctId}</CC_Calling_Party_Id>
+         <CHANNEL>USSD-DISTRIBUTOR</CHANNEL>
+         <TRANSACTION_ID>${txn_id}</TRANSACTION_ID>
+         <Recipient_Number>${msisdn}</Recipient_Number>
+         <BundleName>${bundleId}</BundleName>
+         <SubscriptionType>One-Off</SubscriptionType>
+      </dat:DATARechargeUSSDMoMoRequest>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+    try {
+        const {response} = await soapRequest({url: url, headers: sampleHeaders, xml: xmlRequest, timeout: 5000}); // Optional timeout parameter(milliseconds)
+
+        const {body} = response;
+
+        let jsonObj = parser.parse(body, options);
+        let result = jsonObj.Envelope.Body;
+        if (result.DATARechargeUSSDMoMoResult && result.DATARechargeUSSDMoMoResult.ServiceRequestID) {
+            return res.json({
+                status: 0,
+                reason: "success",
+            })
+
+
+        }
+
+
+    } catch (err) {
+        let errorBody = err.toString();
+        if (parser.validate(errorBody) === true) {
+            let jsonObj = parser.parse(errorBody, options);
+            if (jsonObj.Envelope.Body.Fault) {
+                let soapFault = jsonObj.Envelope.Body.Fault;
+                let faultString = soapFault.faultstring;
+                console.log(faultString);
+                let errorcode = soapFault.detail.DATARechargeUSSDMoMoFault.errorCode;
+                console.log(errorcode)
+                switch (errorcode) {
+                    case 62:
+                        faultString = "Invalid Request Parameter values";
+                        break;
+                    case 60:
+                    case 61:
+                        faultString = `Surfline Number ${msisdn} is not valid`;
+                        break;
+
+                    default:
+                        faultString = "System Error";
+
+                }
+                return res.json(
+                    {
+                        status: 1,
+                        reason: faultString,
+                    })
+
+            }
+
+
+        }
+
+        console.log(errorBody)
+        res.json({status: 1, reason: "System Failure"})
+
+    }
+
+
+})
+
+router.post("/reset_pin", passport.authenticate('basic', {session: false}), async (req, res) => {
+
+    try {
+        const {acctId: contactId, type} = req.body
+        let dist
+        switch (type) {
+            case 'DISTRIBUTOR':
+                dist = await Distributor.findOne({where: {contactId}})
+                break
+            case 'RETAILOR':
+                dist = await Retailor.findOne({where: {contactId}})
+                break
+        }
+        if (dist) {
+            let pin = generatePIN()
+            dist.pin = pin
+            dist.status = 'CREATED'
+            await dist.save()
+            res.json({status: 0, reason: "success"})
+            const smsContent = `Your PIN: ${pin}`
+            try {
+                await pushSMS(contactId, smsContent)
+            } catch (ex) {
+                console.log("SMS Error", ex)
+            }
+        } else {
+            res.json({status: 1, reason: `${contactId} is not a valid Retailor/Distributor number`})
+
+        }
+    } catch (ex) {
+        res.json({status: 1, reason: 'System Error'})
+
+    }
+
+
+})
+
 
 router.post("/user", async (req, res) => {
     try {
@@ -536,54 +660,78 @@ router.post("/user", async (req, res) => {
 
 });
 
-async function getContact(msisdn) {
+router.get("/checkValid", passport.authenticate('basic', {session: false}), async (req, res) => {
+
+    let {contactId} = req.query
 
     try {
-        const url = "http://172.25.39.16:2222";
-        const sampleHeaders = {
-            'User-Agent': 'NodeApp',
-            'Content-Type': 'text/xml;charset=UTF-8',
-            'SOAPAction': 'http://SCLINSMSVM01P/wsdls/Surfline/MGMGetReferralAcctInfo/MGMGetReferralAcctInfo',
-            'Authorization': 'Basic YWlhb3NkMDE6YWlhb3NkMDE='
-        };
-
-        let xmlBody = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:mgm="http://SCLINSMSVM01P/wsdls/Surfline/MGMGetReferralAcctInfo.wsdl">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <mgm:MGMGetReferralAcctInfoRequest>
-         <CC_Calling_Party_Id>${msisdn}</CC_Calling_Party_Id>
-      </mgm:MGMGetReferralAcctInfoRequest>
-   </soapenv:Body>
-</soapenv:Envelope>`;
+        const dist = await Distributor.findOne({where: {contactId}})
+        if (dist) return res.json({status: 0, accountState: dist.status, type: "DISTRIBUTOR", reason: "success"})
+        const retail = await Retailor.findOne({where: {contactId}})
+        if (retail) return res.json({status: 0, accountState: retail.status, type: "RETAILOR", reason: "success"})
+        res.json({
+            status: 1,
+            reason: `Your phone Number ${contactId} is not allowed`
+        })
 
 
-        const {response} = await soapRequest({url: url, headers: sampleHeaders, xml: xmlBody, timeout: 5000});
-        const {body} = response;
-        let jsonObj = parser.parse(body, options);
-        let jsonResult = jsonObj.Envelope.Body;
-        let result = {}
-        if (jsonResult.MGMGetReferralAcctInfoResult && jsonResult.MGMGetReferralAcctInfoResult.Result) {
-            result.contact = jsonResult.MGMGetReferralAcctInfoResult.Result
-            result.success = true;
-
-
-        } else {
-            result.contact = null;
-            result.success = false;
-
-        }
-        return result;
-
-    } catch (error) {
-        console.log(error.toString())
-        return {
-            contact: null,
-            success: false,
-        }
+    } catch (ex) {
+        console.log(ex)
+        res.json({
+            status: 1,
+            reason: `Your phone Number ${contactId} is not allowed`
+        })
 
     }
 
-}
+
+})
+router.get("/checkValidRetail", passport.authenticate('basic', {session: false}), async (req, res) => {
+
+    let {contactId, distributorId} = req.query
+
+    try {
+        const dist = await Distributor.findOne({where: {contactId: distributorId}})
+        const retail = await Retailor.findOne({where: {contactId}})
+
+        if (retail) {
+            if (!await dist.hasRetailor(retail)) return res.json({
+                status: 1,
+                reason: `Retailor number${contactId} is not assigned to you`
+            })
+            switch (retail.status) {
+                case 'ACTIVE':
+                    return res.json({status: 0, reason: 'success', data:retail.businessName})
+                case 'CREATED':
+                    return res.json({status: 1, reason: `Retailor number${contactId} has not been activated`})
+            }
+        } else {
+            return res.json({status: 1, reason: `Retailor number${contactId} is invalid.`})
+        }
+
+
+    } catch (ex) {
+        console.log(ex)
+        res.json({
+            status: 1,
+            reason: 'System Error. Please try again later'
+        })
+
+    }
+
+
+})
+router.get("/checkExisting", passport.authenticate('basic', {session: false}), async (req, res) => {
+
+    let {contactId} = req.query
+    const result =await checkExisting(contactId)
+    if (!result) res.json({status:0,reason:'success'})
+    else res.json({status:1,reason:result.toString()})
+
+
+})
+
+
 
 async function checkExisting(contactId) {
     const dist = await Distributor.findOne({where: {contactId}})
@@ -594,68 +742,227 @@ async function checkExisting(contactId) {
 
 }
 
-async function creditCashIN(msisdn, txnId, acctId, amount, channel) {
-    const url = process.env.OSD_ENDPOINT;
+async function checkAcctStatus(contactId, type) {
+    switch (type) {
+        case 'DISTRIBUTOR':
+            const dist = await Distributor.findOne({where: {contactId}})
+            if (dist.status !== 'ACTIVE') return `${contactId} is not ACTIVE.Please change PIN to activate `;
+            break
+        case 'RETAILOR':
+            const ret = await Distributor.findOne({where: {contactId}})
+            if (ret.status !== 'ACTIVE') return `${contactId} is not ACTIVE.Please change PIN to activate `;
+            break
+
+    }
+    return null;
+
+}
+
+async function creditCash(msisdn, txn_id, amount) {
+    const url = PI_ENDPOINT;
 
     const headers = {
         'User-Agent': 'NodeApp',
         'Content-Type': 'text/xml;charset=UTF-8',
-        'SOAPAction': 'http://172.25.39.13/wsdls/Surfline/CustomRecharge/CustomRecharge',
-        'Authorization': `Basic ${process.env.OSD_AUTH}`
+        'SOAPAction': 'urn:CCSCD1_CHG',
     };
 
 
-    const creditXML = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ret="http://SCLINSMSVM01P/wsdls/Surfline/RetailorCashCredit.wsdl">
+    const debitXML = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:pi="http://xmlns.oracle.com/communications/ncc/2009/05/15/pi">
    <soapenv:Header/>
    <soapenv:Body>
-      <ret:RetailorCashCreditRequest>
-         <CC_Calling_Party_Id>${msisdn}</CC_Calling_Party_Id>
-         <Recharge_List_List>
-            <Recharge_List>
-               <Balance_Type_Name>General Cash</Balance_Type_Name>
-               <Recharge_Amount>${amount}</Recharge_Amount>
-               <Balance_Expiry_Extension_Period></Balance_Expiry_Extension_Period>
-               <Balance_Expiry_Extension_Policy></Balance_Expiry_Extension_Policy>
-               <Bucket_Creation_Policy></Bucket_Creation_Policy>
-               <Balance_Expiry_Extension_Type></Balance_Expiry_Extension_Type>
-            </Recharge_List>
-         </Recharge_List_List>
-         <CHANNEL>${channel}</CHANNEL>
-         <TRANSACTION_ID>${txnId}</TRANSACTION_ID>
-         <POS_USER>${acctId}</POS_USER>
-      </ret:RetailorCashCreditRequest>
+      <pi:CCSCD1_CHG>
+         <pi:username>admin</pi:username>
+         <pi:password>admin</pi:password>
+         <pi:MSISDN>${msisdn}</pi:MSISDN>
+         <pi:BALANCE_TYPE>General Cash</pi:BALANCE_TYPE>
+         <pi:BALANCE>-${amount}</pi:BALANCE>
+         <pi:EXTRA_EDR>TRANSACTION_ID=${txn_id}|CHANNEL=USSD-DISTRIBUTOR</pi:EXTRA_EDR>
+      </pi:CCSCD1_CHG>
    </soapenv:Body>
 </soapenv:Envelope>`;
 
     const {response} = await soapRequest({
         url: url,
         headers: headers,
-        xml: creditXML,
-        timeout: 7000
+        xml: debitXML,
+        timeout: 5000
     });
     const {body} = response;
     let jsonObj = parser.parse(body, options);
-    const soapResponseBody = jsonObj.Envelope.Body;
-    if (soapResponseBody.RetailorCashCreditResult) {
-        const {OCNCC_REFID, Result} = soapResponseBody.RetailorCashCreditResult
-        if (OCNCC_REFID) {
-            return {
-                status: 'success',
-                contact: Result ? Result : null,
-                txnId_IN: OCNCC_REFID
-            }
-        } else {
-            throw new Error("Error in crediting subscriber account")
-        }
 
+    const soapResponseBody = jsonObj.Envelope.Body;
+
+    if (!soapResponseBody.CCSCD1_CHGResponse && soapResponseBody.CCSCD1_CHGResponse.AUTH) {
+        let soapFault = jsonObj.Envelope.Body.Fault;
+        let faultString = soapFault.faultstring;
+        throw new Error(faultString.toString())
+    }
+
+
+}
+
+async function debitCash(msisdn, amount, txn_id) {
+
+    const url = PI_ENDPOINT;
+
+    const headers = {
+        'User-Agent': 'NodeApp',
+        'Content-Type': 'text/xml;charset=UTF-8',
+        'SOAPAction': 'urn:CCSCD1_CHG',
+    };
+
+
+    const debitXML = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:pi="http://xmlns.oracle.com/communications/ncc/2009/05/15/pi">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <pi:CCSCD1_CHG>
+         <pi:username>admin</pi:username>
+         <pi:password>admin</pi:password>
+         <pi:MSISDN>${msisdn}</pi:MSISDN>
+         <pi:BALANCE_TYPE>General Cash</pi:BALANCE_TYPE>
+         <pi:BALANCE>${amount}</pi:BALANCE>
+         <pi:EXTRA_EDR>TRANSACTION_ID=${txn_id}|CHANNEL=USSD-DISTRIBUTOR</pi:EXTRA_EDR>
+      </pi:CCSCD1_CHG>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const {response} = await soapRequest({
+        url: url,
+        headers: headers,
+        xml: debitXML,
+        timeout: 5000
+    });
+    const {body} = response;
+    let jsonObj = parser.parse(body, options);
+
+    const soapResponseBody = jsonObj.Envelope.Body;
+    console.log(JSON.stringify(soapResponseBody))
+
+    if (!soapResponseBody.CCSCD1_CHGResponse && soapResponseBody.CCSCD1_CHGResponse.AUTH) {
+        let soapFault = jsonObj.Envelope.Body.Fault;
+        let faultString = soapFault.faultstring;
+        throw new Error(faultString.toString())
     }
 
 
 }
 
 
+async function getINBalance(msisdn) {
+    const url = PI_ENDPOINT;
+
+    const headers = {
+        'User-Agent': 'NodeApp',
+        'Content-Type': 'text/xml;charset=UTF-8',
+        'SOAPAction': 'urn:CCSCD1_CHG',
+    };
+
+
+    const XML = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:pi="http://xmlns.oracle.com/communications/ncc/2009/05/15/pi">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <pi:CCSCD1_QRY>
+         <pi:username>admin</pi:username>
+         <pi:password>admin</pi:password>
+         <pi:MSISDN>${msisdn}</pi:MSISDN>
+         <pi:WALLET_TYPE>Primary</pi:WALLET_TYPE>
+         <pi:LIST_TYPE>BALANCE</pi:LIST_TYPE>
+         <pi:BALANCE_TYPE>General Cash</pi:BALANCE_TYPE>
+      </pi:CCSCD1_QRY>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const {response} = await soapRequest({
+        url: url,
+        headers: headers,
+        xml: XML,
+        timeout: 5000
+    });
+    const {body} = response;
+    let jsonObj = parser.parse(body, options);
+
+    const soapResponseBody = jsonObj.Envelope.Body;
+
+    if (soapResponseBody.CCSCD1_QRYResponse && soapResponseBody.CCSCD1_QRYResponse.BALANCE) {
+        return soapResponseBody.CCSCD1_QRYResponse.BALANCE
+    } else {
+        let soapFault = jsonObj.Envelope.Body.Fault;
+        let faultString = soapFault.faultstring;
+        throw new Error(faultString.toString())
+    }
+
+
+}
+
+async function createINAccount(msisdn, productType) {
+    const url = PI_ENDPOINT;
+
+    const headers = {
+        'User-Agent': 'NodeApp',
+        'Content-Type': 'text/xml;charset=UTF-8',
+        'SOAPAction': 'urn:CCSCD1_CHG',
+    };
+
+    const XML = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:pi="http://xmlns.oracle.com/communications/ncc/2009/05/15/pi">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <pi:CCSCD1_ADD>
+         <pi:username>${process.env.PI_USER}</pi:username>
+         <pi:password>${process.env.PI_PASS}</pi:password>
+         <pi:PROVIDER>Surfline</pi:PROVIDER>
+         <pi:PRODUCT>${productType}</pi:PRODUCT>
+         <pi:CURRENCY>GHS</pi:CURRENCY>
+         <pi:INITIAL_STATE>A</pi:INITIAL_STATE>
+         <pi:LANGUAGE>English</pi:LANGUAGE>
+         <pi:MAX_CONCURRENT_ACCESS>10</pi:MAX_CONCURRENT_ACCESS>
+         <pi:MSISDN>${msisdn}</pi:MSISDN>
+      </pi:CCSCD1_ADD>
+   </soapenv:Body>
+</soapenv:Envelope>`
+
+    const {response} = await soapRequest({
+        url: url,
+        headers: headers,
+        xml: XML,
+        timeout: 5000
+    });
+    const {body} = response;
+    let jsonObj = parser.parse(body, options);
+
+    const soapResponseBody = jsonObj.Envelope.Body;
+
+    if (!(soapResponseBody.CCSCD1_ADDResponse && soapResponseBody.CCSCD1_ADDResponse.AUTH)) {
+        let soapFault = jsonObj.Envelope.Body.Fault;
+        let faultString = soapFault.faultstring;
+        throw new Error(faultString.toString())
+    }
+
+
+}
+
+async function pushSMS(contact, smsContent) {
+    const url = "http://api.hubtel.com/v1/messages/";
+    const headers = {
+        "Content-Type": "application/json",
+        Authorization: `${process.env.SMS_AUTH}`
+    };
+
+    let messagebody = {
+        Content: smsContent,
+        FlashMessage: false,
+        From: "Surfline",
+        To: contact,
+        Type: 0,
+        RegisteredDelivery: true
+    };
+    await axios.post(url, messagebody, {headers})
+
+}
+
+
 function generatePIN() {
-    const STRING = "0123456789";
+    const STRING = "123456789";
     const length = STRING.length;
     let code = "";
     for (let i = 0; i < 6; i++) {
