@@ -3,11 +3,12 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/user");
-const validator = require("../utils/validators");
 const passport = require("passport");
 const BasicStrategy = require("passport-http").BasicStrategy;
 const validate = require("../utils/validators")
 const uuid = require("uuid");
+
+require("dotenv").config();
 
 
 const moment = require("moment");
@@ -15,6 +16,8 @@ const {Op, Transaction} = require("sequelize");
 const sequelize = require("../utils/sql_database");
 
 const axios = require("axios");
+
+
 
 
 const soapRequest = require("easy-soap-request");
@@ -41,7 +44,7 @@ const options = {
 };
 
 
-const PI_ENDPOINT = "http://172.25.38.42:3003";
+const PI_ENDPOINT = process.env.PI_ENDPOINT;
 
 passport.use(new BasicStrategy(
     function (username, password, done) {
@@ -150,10 +153,7 @@ router.post('/create_retail', passport.authenticate('basic', {session: false}), 
     }
 
 
-    let acctId = `101${contactId.substring(1)}`
-    contactId = `233${contactId.substring(1)}`
-
-
+    let acctId = `101${contactId.substring(3)}`
     const isExistingMessage = await checkExisting(contactId)
     if (isExistingMessage) return res.json({status: 1, reason: isExistingMessage})
 
@@ -524,12 +524,14 @@ router.post("/data_top_retail", passport.authenticate('basic', {session: false})
 
     const txn_id = uuid.v4();
 
+
+
     const url = "http://172.25.39.16:2222";
     const sampleHeaders = {
         'User-Agent': 'NodeApp',
         'Content-Type': 'text/xml;charset=UTF-8',
         'SOAPAction': 'http://SCLINSMSVM01P/wsdls/Surfline/VoucherRecharge_USSD/VoucherRecharge_USSD',
-        'Authorization': 'Basic YWlhb3NkMDE6YWlhb3NkMDE='
+        'Authorization': `Basic ${process.env.OSD_AUTH}`
     };
 
     let xmlRequest = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:dat="http://SCLINSMSVM01P/wsdls/Surfline/DATARechargeUSSDMobileMoney.wsdl">
@@ -564,6 +566,7 @@ router.post("/data_top_retail", passport.authenticate('basic', {session: false})
 
     } catch (err) {
         let errorBody = err.toString();
+        console.log(errorBody)
         if (parser.validate(errorBody) === true) {
             let jsonObj = parser.parse(errorBody, options);
             if (jsonObj.Envelope.Body.Fault) {
@@ -573,14 +576,9 @@ router.post("/data_top_retail", passport.authenticate('basic', {session: false})
                 let errorcode = soapFault.detail.DATARechargeUSSDMoMoFault.errorCode;
                 console.log(errorcode)
                 switch (errorcode) {
-                    case 62:
-                        faultString = "Invalid Request Parameter values";
-                        break;
                     case 60:
-                    case 61:
-                        faultString = `Surfline Number ${msisdn} is not valid`;
-                        break;
-
+                        faultString = `You have insufficient credit in your account ${contactId}.Thank you`;
+                        break
                     default:
                         faultString = "System Error";
 
@@ -596,7 +594,7 @@ router.post("/data_top_retail", passport.authenticate('basic', {session: false})
 
         }
 
-        console.log(errorBody)
+
         res.json({status: 1, reason: "System Failure"})
 
     }
@@ -664,6 +662,7 @@ router.get("/checkValid", passport.authenticate('basic', {session: false}), asyn
 
     let {contactId} = req.query
 
+
     try {
         const dist = await Distributor.findOne({where: {contactId}})
         if (dist) return res.json({status: 0, accountState: dist.status, type: "DISTRIBUTOR", reason: "success"})
@@ -703,10 +702,10 @@ router.get("/checkValidRetail", passport.authenticate('basic', {session: false})
                 case 'ACTIVE':
                     return res.json({status: 0, reason: 'success', data:retail.businessName})
                 case 'CREATED':
-                    return res.json({status: 1, reason: `Retailor number${contactId} has not been activated`})
+                    return res.json({status: 1, reason: `Retailor number ${contactId} has not been activated`})
             }
         } else {
-            return res.json({status: 1, reason: `Retailor number${contactId} is invalid.`})
+            return res.json({status: 1, reason: `Retailor number ${contactId} is invalid.`})
         }
 
 
@@ -852,6 +851,7 @@ async function debitCash(msisdn, amount, txn_id) {
 async function getINBalance(msisdn) {
     const url = PI_ENDPOINT;
 
+
     const headers = {
         'User-Agent': 'NodeApp',
         'Content-Type': 'text/xml;charset=UTF-8',
@@ -863,8 +863,8 @@ async function getINBalance(msisdn) {
    <soapenv:Header/>
    <soapenv:Body>
       <pi:CCSCD1_QRY>
-         <pi:username>admin</pi:username>
-         <pi:password>admin</pi:password>
+         <pi:username>${process.env.PI_USER}</pi:username>
+         <pi:password>${process.env.PI_PASS}</pi:password>
          <pi:MSISDN>${msisdn}</pi:MSISDN>
          <pi:WALLET_TYPE>Primary</pi:WALLET_TYPE>
          <pi:LIST_TYPE>BALANCE</pi:LIST_TYPE>
@@ -884,7 +884,8 @@ async function getINBalance(msisdn) {
 
     const soapResponseBody = jsonObj.Envelope.Body;
 
-    if (soapResponseBody.CCSCD1_QRYResponse && soapResponseBody.CCSCD1_QRYResponse.BALANCE) {
+
+    if (soapResponseBody.CCSCD1_QRYResponse && (soapResponseBody.CCSCD1_QRYResponse.BALANCE !==null ||soapResponseBody.CCSCD1_QRYResponse.BALANCE !==undefined)) {
         return soapResponseBody.CCSCD1_QRYResponse.BALANCE
     } else {
         let soapFault = jsonObj.Envelope.Body.Fault;
