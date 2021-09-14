@@ -9,12 +9,11 @@ module.exports = {
         const schema = Joi.object({
             businessName: Joi.string()
                 .trim()
-                .alphanum()
                 .lowercase()
                 .required()
                 .label('BUSINESS NAME')
                 .max(255)
-                .min(4),
+                .min(2),
             contactId: Joi.string()
                 .trim()
                 .regex(/^233[1234567890]{9}$/)
@@ -42,11 +41,10 @@ module.exports = {
         const schema = Joi.object({
             businessName: Joi.string()
                 .trim()
-                .alphanum()
                 .lowercase()
                 .label('BUSINESS NAME')
                 .max(255)
-                .min(4),
+                .min(2),
             firstName: Joi.string()
                 .trim()
                 .lowercase()
@@ -63,6 +61,7 @@ module.exports = {
                 .min(4),
             pin: Joi.string()
                 .length(6)
+                .trim()
                 .regex(/^[0123456789]{6}$/)
                 .required()
                 .label('PIN')
@@ -93,12 +92,14 @@ module.exports = {
                 .length(6)
                 .regex(/^[0123456789]{6}$/)
                 .required()
+                .trim()
                 .label('OLD PIN')
                 .messages({"string.pattern.base": "Invalid PIN length. PIN should be 6 digits"}),
 
             newPIN: Joi.string()
                 .length(6)
                 .required()
+                .trim()
                 .regex(/^[0123456789]{6}$/)
                 .label('NEW PIN')
                 .messages({"string.pattern.base": "Invalid PIN length. PIN should be 6 digits"}),

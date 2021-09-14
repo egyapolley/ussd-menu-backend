@@ -161,7 +161,8 @@ router.post('/create_retail', passport.authenticate('basic', {session: false}), 
     try {
 
         let pin = generatePIN()
-        const dist = await Distributor.findOne({contactId: distributorId})
+
+        const dist = await Distributor.findOne({where: {contactId:distributorId}})
         if (!dist) return res.json({status: 1, reason: "Your phone contact is not assigned a distributor."})
         if (dist.pin !==distpin)return res.json({status: 1, reason: 'Incorrect PIN provided. Please check and try Again'})
 
@@ -176,7 +177,7 @@ router.post('/create_retail', passport.authenticate('basic', {session: false}), 
         await createINAccount(acctId, "E-Retailors")
         await txn.commit()
         res.json({
-            status: "0",
+            status: 0,
             reason: "success"
         })
 
