@@ -416,9 +416,9 @@ router.post("/cash_top_sub", passport.authenticate('basic', {session: false}), a
         if (surfContact) {
             try {
                 let smsContent = `GHC${realAmount} credited on your Surfline number ${msisdn}. Dial *718*77# to buy bundle. Thank you`
-                let smsContent1 = `GHC${realAmount} successfully transferred to ${msisdn}`
+                let smsContent1 = `GHC${realAmount} successfully transferred to ${msisdn}. Thank you`
                 await pushSMS(surfContact, smsContent)
-                //await pushSMS(contactId, smsContent1)
+                await pushSMS(contactId, smsContent1)
             } catch (ex) {
                 console.log("SMS Error", ex)
             }
@@ -474,8 +474,11 @@ router.post("/cash_top_retail", passport.authenticate('basic', {session: false})
         res.json({status: 0, reason: "success"})
 
         try {
-            let smsContent = `${dist.businessName} has transfered GHC ${realAmount} to your cash wallet number ${retailorId}. Thank you`
+            let smsContent = `${dist.businessName} has transferred GHC ${realAmount} to your cash wallet number ${retailorId}. Thank you`
+            let smsContent1 = `You have successfully transferred GHC ${realAmount} to  ${retailorId}. Thank you`
+
             await pushSMS(retailorId, smsContent)
+            await pushSMS(acctId,smsContent1)
 
         } catch (ex) {
             console.log("SMS Error", ex)
@@ -505,7 +508,7 @@ router.post("/data_top_retail", passport.authenticate('basic', {session: false})
         })
     }
 
-    let {acctId: contactId, pin, channel, msisdn, bundleId} = req.body
+    let {acctId: contactId, pin, channel, msisdn, bundleId,bundle_cost,bundle_value} = req.body
 
 
     if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
@@ -556,10 +559,20 @@ router.post("/data_top_retail", passport.authenticate('basic', {session: false})
         let jsonObj = parser.parse(body, options);
         let result = jsonObj.Envelope.Body;
         if (result.DATARechargeUSSDMoMoResult && result.DATARechargeUSSDMoMoResult.ServiceRequestID) {
-            return res.json({
+            res.json({
                 status: 0,
                 reason: "success",
             })
+
+            try {
+                let smsContent = `${bundle_value} has been successfully sold to ${msisdn}  at a cost of GHC ${bundle_cost}. Thank you`
+                await pushSMS(contactId, smsContent)
+
+            } catch (ex) {
+                console.log("SMS Error", ex)
+            }
+
+
 
 
         }
