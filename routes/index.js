@@ -500,13 +500,6 @@ router.post("/cash_top_retail", passport.authenticate('basic', {session: false})
 
 router.post("/data_top_retail", passport.authenticate('basic', {session: false}), async (req, res) => {
 
-    const {error} = validate.dataTopSub(req.body)
-    if (error) {
-        return res.json({
-            status: 2,
-            reason: error.message
-        })
-    }
 
     let {acctId: contactId, pin, channel, msisdn, bundleId,bundle_cost,bundle_value} = req.body
 
