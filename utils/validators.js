@@ -232,6 +232,27 @@ module.exports = {
 
     },
 
+    cashTopDist:(body) =>{
+        const schema = Joi.object({
+            acctId: Joi.number()
+                .required()
+                .label('DISTRIBUTOR ID'),
+            amount: Joi.number()
+                .required()
+                .max(1000)
+                .min(0.01)
+                .label('AMOUNT'),
+            channel: Joi.string()
+                .trim()
+                .alphanum()
+                .required()
+                .min(4)
+        });
+
+        return schema.validate(body)
+
+    },
+
 
 }
 

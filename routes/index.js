@@ -497,6 +497,67 @@ router.post("/cash_top_retail", passport.authenticate('basic', {session: false})
 
 })
 
+router.post("/cash_top_dist", passport.authenticate('basic', {session: false}), async (req, res) => {
+    const {error} = validate.cashTopDist(req.body)
+    if (error) {
+        console.log(JSON.stringify(error))
+        return res.json({
+            status: 2,
+            reason: error.message
+        })
+    }
+
+    let {acctId, channel, amount} = req.body
+    const realAmount =amount
+    amount *= 100;
+
+    if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
+        return res.json({
+            status: 2,
+            reason: `Invalid Request channel ${channel}`
+        })
+    }
+
+    try {
+        const dist = await Distributor.findOne({where: {contactId: acctId}})
+        if (dist){
+            if (dist.status !=='ACTIVE') return res.json({status:1,reason:`Distributor number ${acctId} is not active`})
+            const txn_id = uuid.v4();
+            await creditCash(dist.acctId.toString(), txn_id, amount)
+            res.json({status: 0, reason: "success"})
+
+            try {
+
+                let smsContent = `Hello ${dist.businessName}, your account number ${acctId} has been credited with GHC ${realAmount}. Thank you`
+                await pushSMS(acctId,smsContent)
+
+            } catch (ex) {
+                console.log("SMS Error", ex)
+            }
+
+        }else {
+            res.json({
+                status: 2,
+                reason: `Distributor number ${acctId} does not exist.`
+            })
+
+        }
+
+
+
+    } catch (ex) {
+        console.log(ex)
+        res.json({
+            status: 1,
+            reason: "System Error."
+        })
+
+    }
+
+
+})
+
+
 
 router.post("/data_top_retail", passport.authenticate('basic', {session: false}), async (req, res) => {
 
