@@ -381,7 +381,8 @@ router.get("/balance_retail", passport.authenticate('basic', {session: false}), 
 })
 
 router.post("/cash_top_sub", passport.authenticate('basic', {session: false}), async (req, res) => {
-    const {error} = validate.cashTopSub(req.body)
+    let {acctId: contactId, pin, channel, msisdn, amount, surfContact} = req.body
+    const {error} = validate.cashTopSub({acctId:contactId, pin, channel, msisdn, amount})
     if (error) {
         console.log(JSON.stringify(error))
         return res.json({
@@ -390,7 +391,7 @@ router.post("/cash_top_sub", passport.authenticate('basic', {session: false}), a
         })
     }
 
-    let {acctId: contactId, pin, channel, msisdn, amount, surfContact} = req.body
+
     const realAmount = amount
     amount *= 100;
 
@@ -794,6 +795,44 @@ router.get("/checkExisting", passport.authenticate('basic', {session: false}), a
     const result =await checkExisting(contactId)
     if (!result) res.json({status:0,reason:'success'})
     else res.json({status:1,reason:result.toString()})
+
+
+})
+
+router.post('/checkPINValid', passport.authenticate('basic', {session: false}), async (req, res) => {
+    const {error} = validate.checkPINValid(req.body)
+    if (error) {
+        return res.json({
+            status: 2,
+            reason: error.message
+        })
+    }
+
+    let {acctId: contactId, pin,type, channel} = req.body
+
+    if (channel.toLowerCase() !== req.user.channel.toLowerCase()) {
+        return res.json({
+            status: 2,
+            reason: `Invalid Request channel ${channel}`
+        })
+    }
+
+    if (type ===  'DISTRIBUTOR'){
+        const dist = await Distributor.findOne({where: {contactId}})
+        if (!dist) return res.json({status: 1, reason: "DISTRIBUTOR number does not exist."})
+        if (dist.pin !== pin) return res.json({status: 1, reason: 'Incorrect PIN provided. Please check and try Again'})
+        res.json({status:0, reason:"success"})
+    }else {
+        const retail = await Retailor.findOne({where: {contactId}})
+        if (!retail) return res.json({status: 1, reason: "RETAILOR number does not exist."})
+        if (retail.pin !== pin) return res.json({status: 1, reason: 'Incorrect PIN provided. Please check and try Again'})
+        res.json({status:0, reason:"success"})
+
+    }
+
+
+
+
 
 
 })

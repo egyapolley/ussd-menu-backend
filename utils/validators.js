@@ -13,7 +13,7 @@ module.exports = {
                 .required()
                 .label('BUSINESS NAME')
                 .max(255)
-                .min(2),
+                .min(1),
             contactId: Joi.string()
                 .trim()
                 .regex(/^233[1234567890]{9}$/)
@@ -26,7 +26,7 @@ module.exports = {
                 .required()
                 .max(255)
                 .label('TERRITORY/AREA')
-                .min(4),
+                .min(1),
             channel: Joi.string()
                 .trim()
                 .alphanum()
@@ -44,21 +44,21 @@ module.exports = {
                 .lowercase()
                 .label('BUSINESS NAME')
                 .max(255)
-                .min(2),
+                .min(1),
             firstName: Joi.string()
                 .trim()
                 .lowercase()
                 .required()
                 .label('FIRST NAME')
                 .max(255)
-                .min(4),
+                .min(1),
             lastName: Joi.string()
                 .trim()
                 .lowercase()
                 .required()
                 .label('LAST NAME')
                 .max(255)
-                .min(4),
+                .min(1),
             pin: Joi.string()
                 .length(6)
                 .trim()
@@ -155,8 +155,6 @@ module.exports = {
                 .max(1000)
                 .min(0.01)
                 .label('AMOUNT'),
-            surfContact: Joi.string()
-                .required(),
             msisdn: Joi.string()
                 .trim()
                 .regex(/^23325[1234567890]{7}$/)
@@ -173,35 +171,7 @@ module.exports = {
         return schema.validate(body)
 
     },
-    dataTopSub:(body) =>{
-        const schema = Joi.object({
-            pin: Joi.string()
-                .length(6)
-                .regex(/^[0123456789]{6}$/)
-                .required()
-                .label('PIN')
-                .messages({"string.pattern.base": "Invalid PIN length. PIN should be 6 digits"}),
-            acctId: Joi.number()
-                .required()
-                .label('PHONE NUMBER'),
-            bundleId: Joi.string()
-                .required(),
-            msisdn: Joi.string()
-                .trim()
-                .regex(/^23325[1234567890]{7}$/)
-                .required()
-                .length(12)
-                .messages({"string.pattern.base": "Invalid Surfline Number. Surfline number should start with 025"}),
-            channel: Joi.string()
-                .trim()
-                .alphanum()
-                .required()
-                .min(4)
-        });
 
-        return schema.validate(body)
-
-    },
     cashTopRetail:(body) =>{
         const schema = Joi.object({
             pin: Joi.string()
@@ -242,6 +212,29 @@ module.exports = {
                 .max(1000)
                 .min(0.01)
                 .label('AMOUNT'),
+            channel: Joi.string()
+                .trim()
+                .alphanum()
+                .required()
+                .min(4)
+        });
+
+        return schema.validate(body)
+
+    },
+
+    checkPINValid:(body) =>{
+        const schema = Joi.object({
+            acctId: Joi.number()
+                .required()
+                .label('ACCOUNT ID'),
+            pin: Joi.number()
+                .required()
+                .label('PIN'),
+            type:Joi.string()
+                .trim()
+                .required()
+                .valid("DISTRIBUTOR","RETAILOR"),
             channel: Joi.string()
                 .trim()
                 .alphanum()
