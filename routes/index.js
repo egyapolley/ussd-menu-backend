@@ -7,14 +7,12 @@ const passport = require("passport");
 const BasicStrategy = require("passport-http").BasicStrategy;
 const validate = require("../utils/validators")
 const uuid = require("uuid");
+const utils = require("../utils/utils")
 
 require("dotenv").config();
 
 
-const moment = require("moment");
-const {Op, Transaction} = require("sequelize");
 const sequelize = require("../utils/sql_database");
-
 const axios = require("axios");
 
 
@@ -23,7 +21,7 @@ const axios = require("axios");
 const soapRequest = require("easy-soap-request");
 const parser = require('fast-xml-parser');
 const he = require('he');
-const {Distributor, Retailor} = require("../models/sql_models");
+const {Distributor, Retailor,Transactions} = require("../models/sql_models");
 const options = {
     attributeNamePrefix: "@_",
     attrNodeName: "attr", //default is 'false'
@@ -115,6 +113,7 @@ router.post('/create_dist', passport.authenticate('basic', {session: false}), as
             console.log("SMS Error", ex)
         }
 
+
     } catch (ex) {
         console.log(ex)
         await txn.rollback()
@@ -188,6 +187,14 @@ router.post('/create_retail', passport.authenticate('basic', {session: false}), 
             console.log("SMS Error", ex)
         }
 
+        try {
+            const transactionObj = utils.getTransactionObj("retail-create",distributorId,{firstName, lastName,businessName,acctId,retailorId:contactId})
+            await Transactions.create(transactionObj)
+        }catch (ex){
+            console.log("Log failure", ex)
+        }
+
+
     } catch (ex) {
         console.log(ex)
         await txn.rollback()
@@ -239,6 +246,12 @@ router.post('/activate_dist', passport.authenticate('basic', {session: false}), 
         try {
             await dist.save()
             res.json({status: 0, reason: "success"})
+            try {
+                const transactionObj = utils.getTransactionObj("pin-change",contactId)
+                await Transactions.create(transactionObj)
+            }catch (ex){
+                console.log("Log failure", ex)
+            }
         } catch (ex) {
             console.log(ex)
             res.json({
@@ -281,6 +294,12 @@ router.post('/activate_retail', passport.authenticate('basic', {session: false})
         try {
             await ret.save()
             res.json({status: 0, reason: "success"})
+            try {
+                const transactionObj = utils.getTransactionObj("pin-change",contactId)
+                await Transactions.create(transactionObj)
+            }catch (ex){
+                console.log("Log failure", ex)
+            }
         } catch (ex) {
             console.log(ex)
             res.json({
@@ -426,6 +445,15 @@ router.post("/cash_top_sub", passport.authenticate('basic', {session: false}), a
 
         }
 
+        try {
+            const transactionObj = utils.getTransactionObj("cash-debit",contactId,{subscriberId:msisdn,amount:realAmount})
+            await Transactions.create(transactionObj)
+        }catch (ex){
+            console.log("Log failure", ex)
+        }
+
+
+
 
     } catch (ex) {
         console.log(ex)
@@ -481,9 +509,27 @@ router.post("/cash_top_retail", passport.authenticate('basic', {session: false})
             await pushSMS(retailorId, smsContent)
             await pushSMS(acctId,smsContent1)
 
+
+
         } catch (ex) {
             console.log("SMS Error", ex)
+
         }
+
+        try {
+            const transactionObj = utils.getTransactionObj("dist-debit",acctId,{retailorId:retailorId,amount:realAmount})
+            await Transactions.create(transactionObj)
+        }catch (ex){
+            console.log("Log failure", ex)
+        }
+
+        try {
+            const transactionObj = utils.getTransactionObj("cash-credit",retailorId,{distributorId:acctId,amount:realAmount})
+            await Transactions.create(transactionObj)
+        }catch (ex){
+            console.log("Log failure", ex)
+        }
+
 
 
     } catch (ex) {
@@ -532,8 +578,16 @@ router.post("/cash_top_dist", passport.authenticate('basic', {session: false}), 
                 let smsContent = `Hello ${dist.businessName}, your account number ${acctId} has been credited with GHC ${realAmount}. Thank you`
                 await pushSMS(acctId,smsContent)
 
+
             } catch (ex) {
                 console.log("SMS Error", ex)
+            }
+
+            try {
+                const transactionObj = utils.getTransactionObj("dist-credit",acctId,{distributorId:acctId,amount:realAmount})
+                await Transactions.create(transactionObj)
+            }catch (ex){
+                console.log("Log failure", ex)
             }
 
         }else {
@@ -627,6 +681,14 @@ router.post("/data_top_retail", passport.authenticate('basic', {session: false})
                 console.log("SMS Error", ex)
             }
 
+            try {
+                const transactionObj = utils.getTransactionObj("bundle-debit",contactId,{subscriberId:msisdn,amount:bundle_cost, bundleName:bundle_value})
+                await Transactions.create(transactionObj)
+            }catch (ex){
+                console.log("Log failure", ex)
+            }
+
+
 
 
 
@@ -695,6 +757,13 @@ router.post("/reset_pin", passport.authenticate('basic', {session: false}), asyn
                 await pushSMS(contactId, smsContent)
             } catch (ex) {
                 console.log("SMS Error", ex)
+            }
+
+            try {
+                const transactionObj = utils.getTransactionObj("pin-reset",contactId)
+                await Transactions.create(transactionObj)
+            }catch (ex){
+                console.log("Log failure", ex)
             }
         } else {
             res.json({status: 1, reason: `${contactId} is not a valid Retailor/Distributor number`})

@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const helmet = require("helmet");
 
 const sequelize = require("./utils/sql_database");
-const {Distributor, Retailor} = require("./models/sql_models");
+const {Distributor, Retailor,Transactions} = require("./models/sql_models");
 
 
 require("dotenv").config();

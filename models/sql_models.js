@@ -85,6 +85,26 @@ const Distributor = sequelize.define("distributor", {
      },
 
  });
+ const Transactions = sequelize.define("transactions", {
+     id: {
+         type:Sequelize.INTEGER,
+         primaryKey:true,
+         allowNull:false,
+         autoIncrement:true
+     },
+     contactId:{
+         type:Sequelize.STRING,
+         allowNull: false,
+     },
+     transactionType:{
+         type:Sequelize.STRING,
+         allowNull: false,
+     },
+     details:{
+         type:Sequelize.STRING,
+         allowNull: false,
+     },
+ });
 
 
-module.exports = {Distributor, Retailor}
+module.exports = {Distributor, Retailor,Transactions}
