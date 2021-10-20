@@ -19,19 +19,20 @@ module.exports = {
 
         }
         else if (transactionType === "pin-reset") {
+            const {user} = details
             return {
                 transactionType,
                 contactId,
-                details: "result=success"
+                details: `${user?`user=${user},`:""}result=success`
             }
 
         }
         else if (transactionType === 'dist-credit') {
-            const {distributorId, amount} = details
+            const {distributorId, amount,user} = details
             return {
                 transactionType,
                 contactId,
-                details: `$distributorId=${distributorId},amount=${amount},result=success`
+                details: `$distributorId=${distributorId},amount=${amount},user=${user},result=success`
             }
 
 
@@ -71,6 +72,17 @@ module.exports = {
                 transactionType,
                 contactId,
                 details: `subscriberId=${subscriberId},cost=${amount},bundleName=${bundleName},result=success`
+            }
+
+
+        }
+
+        else if (transactionType === 'acct-change') {
+            const {user, status} = details
+            return {
+                transactionType,
+                contactId,
+                details: `contactId=${contactId},user=${user},status=${status},result=success`
             }
 
 

@@ -1,5 +1,6 @@
 const express = require("express");
 const router = require("./routes/index");
+const router2 = require("./routes/web_routes");
 const mongoose = require("mongoose");
 const helmet = require("helmet");
 
@@ -36,6 +37,7 @@ mongoose.connect("mongodb://localhost/ussd_Distributor", {
             let HOST = process.env.HOST;
 
             app.use(router);
+            app.use(router2)
 
             app.listen(PORT, () => {
                 console.log(`Server running  on url : http://${HOST}:${PORT}`)

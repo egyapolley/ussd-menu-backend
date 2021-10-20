@@ -803,9 +803,9 @@ router.get("/checkValid", passport.authenticate('basic', {session: false}), asyn
 
     try {
         const dist = await Distributor.findOne({where: {contactId}})
-        if (dist) return res.json({status: 0, accountState: dist.status, type: "DISTRIBUTOR", reason: "success"})
+        if (dist && dist.status !== 'BLOCKED') return res.json({status: 0, accountState: dist.status, type: "DISTRIBUTOR", reason: "success"})
         const retail = await Retailor.findOne({where: {contactId}})
-        if (retail) return res.json({status: 0, accountState: retail.status, type: "RETAILOR", reason: "success"})
+        if (retail && retail.status !== 'BLOCKED') return res.json({status: 0, accountState: retail.status, type: "RETAILOR", reason: "success"})
         res.json({
             status: 1,
             reason: `Your phone Number ${contactId} is not allowed`
