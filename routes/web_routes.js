@@ -303,7 +303,7 @@ router.post('/evdaddretail', passport.authenticate('basic', {session: false}), a
         })
     }
 
-    let {firstName, lastName, distributorId, businessName, contactId} = req.body
+    let {firstName, lastName, distributorId, businessName, contactId,channel} = req.body
 
 
 
@@ -318,7 +318,10 @@ router.post('/evdaddretail', passport.authenticate('basic', {session: false}), a
 
         const dist = await Distributor.findOne({where: {contactId:distributorId}})
         if (!dist) return res.json({status: 1, reason:`${distributorId} is not registered`})
-        if (dist.status !== 'ACTIVE') return  res.json({status: 1, reason:`Distributor account ${distributorId} is not ACTIVE`})
+        if (channel !== 'BULK'){
+            if (dist.status !== 'ACTIVE') return  res.json({status: 1, reason:`Distributor account ${distributorId} is not ACTIVE`})
+
+        }
 
         await dist.createRetailor({
             contactId,
@@ -597,7 +600,7 @@ async function createINAccount(msisdn, productType) {
         url: url,
         headers: headers,
         xml: XML,
-        timeout: 5000
+        timeout: 10000
     });
     const {body} = response;
     let jsonObj = parser.parse(body, options);

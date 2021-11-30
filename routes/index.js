@@ -103,7 +103,7 @@ router.post('/create_dist', passport.authenticate('basic', {session: false}), as
         await createINAccount(acctId, "E-Distributors")
         await txn.commit();
         res.json({
-            status: "0",
+            status: 0,
             reason: "success"
         })
         let smsContent = `Your PIN: ${pin}`
