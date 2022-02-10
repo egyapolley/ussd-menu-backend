@@ -185,7 +185,7 @@ module.exports = {
                 .label('DISTRIBUTOR ID'),
             amount: Joi.number()
                 .required()
-                .max(1000)
+                .max(15000)
                 .min(0.01)
                 .label('AMOUNT'),
             retailorId: Joi.number()

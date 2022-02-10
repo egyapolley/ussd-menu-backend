@@ -102,8 +102,6 @@ module.exports = {
                 .label('DISTRIBUTOR ID'),
             amount: Joi.number()
                 .required()
-                .max(1000)
-                .min(0.01)
                 .label('AMOUNT'),
             user: Joi.string()
                 .trim()
